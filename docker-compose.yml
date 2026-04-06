@@ -17,6 +17,95 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Ollama (Local LLM) ───────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aegis-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─── Langfuse (Telemetry) ─────────────────────────────────────────────────────
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: aegis-langfuse
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=${LANGFUSE_DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/langfuse}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-changeme}
+      - NEXTAUTH_URL=${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      - SALT=${LANGFUSE_SALT:-changeme}
+      - TELEMETRY_ENABLED=false
+    depends_on:
+      - postgres
+    profiles:
+      - telemetry
+      - full
+
+  # ─── PostgreSQL for Langfuse ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: aegis-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=langfuse
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    profiles:
+      - telemetry
+      - full
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Qdrant (Vector Store - Alternative to Supabase) ──────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: aegis-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    profiles:
+      - vector
+      - full
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ─── API Server ───────────────────────────────────────────────────────────────
   api:
     build:
@@ -32,8 +121,13 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - MEM0_QDRANT_HOST=${MEM0_QDRANT_HOST:-}
+      - MEM0_USE_SUPABASE=${MEM0_USE_SUPABASE:-true}
     depends_on:
       redis:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -42,7 +136,8 @@ services:
       start_period: 30s
       retries: 3
     volumes:
-      - ~/.cache/huggingface:/home/aegis/.cache/huggingface:ro
+      - model_cache:/home/aegis/.cache/huggingface:ro
+      - aegis_models:/app/models:ro
 
   # ─── Background Worker ────────────────────────────────────────────────────────
   worker:
@@ -57,12 +152,26 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
     volumes:
-      - ~/.cache/huggingface:/home/aegis/.cache/huggingface:ro
+      - model_cache:/home/aegis/.cache/huggingface:ro
+      - aegis_models:/app/models:ro
 
 volumes:
   redis_data:
+    driver: local
+  ollama_data:
+    driver: local
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  model_cache:
+    driver: local
+  aegis_models:
     driver: local

@@ -1,16 +1,17 @@
-"""PDF processor - text and metadata extraction, embedded JS detection."""
+"""PDF processor - text and metadata extraction using pdfplumber."""
 
 from __future__ import annotations
 
 import base64
 import io
-import re
 from typing import Any
 
 from aegis.processors.text import TextProcessor
 
 
 class PdfProcessor:
+    """Process PDF files with pdfplumber for better text extraction."""
+
     def __init__(self) -> None:
         self._text_processor = TextProcessor()
 
@@ -18,15 +19,16 @@ class PdfProcessor:
         pdf_bytes = self._decode_content(content)
 
         try:
-            from pypdf import PdfReader
+            import pdfplumber
 
-            reader = PdfReader(io.BytesIO(pdf_bytes))
-            text = self._extract_text(reader)
-            metadata = self._extract_metadata(reader)
-            has_embedded_js = self._detect_embedded_js(reader)
-            has_embedded_files = self._detect_embedded_files(reader)
-            page_count = len(reader.pages)
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                text = self._extract_text(pdf)
+                metadata = self._extract_metadata(pdf)
+                has_embedded_js = self._detect_embedded_js(pdf)
+                has_embedded_files = self._detect_embedded_files(pdf)
+                page_count = len(pdf.pages)
         except Exception:
+            # Fallback to empty result on error
             text = ""
             metadata = {}
             has_embedded_js = False
@@ -48,60 +50,71 @@ class PdfProcessor:
         )
 
     def _decode_content(self, content: str) -> bytes:
+        """Decode base64 or raw bytes from content string."""
         try:
             return base64.b64decode(content)
         except Exception:
             return content.encode("utf-8", errors="ignore")
 
-    def _extract_text(self, reader: Any) -> str:
+    def _extract_text(self, pdf: Any) -> str:
+        """Extract text from all pages using pdfplumber."""
         pages_text = []
-        for page in reader.pages:
+        for page in pdf.pages:
             try:
-                pages_text.append(page.extract_text() or "")
+                page_text = page.extract_text()
+                if page_text:
+                    pages_text.append(page_text)
             except Exception:
                 pass
         return "\n".join(pages_text)
 
-    def _extract_metadata(self, reader: Any) -> dict[str, str]:
+    def _extract_metadata(self, pdf: Any) -> dict[str, str]:
+        """Extract PDF metadata."""
         meta = {}
-        if reader.metadata:
-            for key, value in reader.metadata.items():
-                clean_key = str(key).lstrip("/")
-                meta[clean_key] = str(value)
+        if pdf.metadata:
+            for key, value in pdf.metadata.items():
+                if value is not None:
+                    clean_key = str(key).lstrip("/")
+                    meta[clean_key] = str(value)
         return meta
 
-    def _detect_embedded_js(self, reader: Any) -> bool:
-        js_patterns = [r"/JavaScript", r"/JS\b"]
-        try:
-            raw_pdf = str(reader.pdf_header) if hasattr(reader, "pdf_header") else ""
-            for pattern in js_patterns:
-                if re.search(pattern, raw_pdf):
-                    return True
-        except Exception:
-            pass
+    def _detect_embedded_js(self, pdf: Any) -> bool:
+        """Detect embedded JavaScript in PDF."""
+        import re
+
+        js_patterns = [r"/JavaScript", r"/JS\b", r"/OpenAction", r"/AA"]
 
         try:
-            trailer = reader.trailer
-            if "/AcroForm" in trailer:
-                return True
+            # Check metadata for JS references
+            metadata = pdf.metadata or {}
+            meta_str = str(metadata)
+            for pattern in js_patterns:
+                if re.search(pattern, meta_str, re.IGNORECASE):
+                    return True
         except Exception:
             pass
 
         return False
 
-    def _detect_embedded_files(self, reader: Any) -> bool:
+    def _detect_embedded_files(self, pdf: Any) -> bool:
+        """Detect embedded files in PDF."""
         try:
-            trailer = reader.trailer
-            if "/Root" in trailer:
-                root = trailer["/Root"]
-                if "/Names" in root and "/EmbeddedFiles" in root.get_object().get("/Names", {}):
-                    return True
+            # Check for attachments/names
+            if hasattr(pdf, "pdf_doc"):
+                root = pdf.pdf_doc.catalog.get("Names")
+                if root:
+                    embedded = root.get("EmbeddedFiles")
+                    if embedded:
+                        return True
         except Exception:
             pass
+
         return False
 
 
 class ProcessedPdf:
+    """Result of PDF processing."""
+
     def __init__(
         self,
         text: str,
