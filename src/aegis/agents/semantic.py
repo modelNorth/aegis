@@ -1,47 +1,18 @@
-"""Semantic Agent - rule-based classifier with Phase 2 ML integration point."""
+"""Semantic Agent - classifier-based with Aegis ML or rule-based fallback."""
 
 from __future__ import annotations
 
-import re
+import logging
 from typing import Any
 
-from aegis.core.constants import AgentName, PROMPT_INJECTION_PATTERNS
-from aegis.core.models import AgentFinding
 from aegis.agents.base import BaseAegisAgent
+from aegis.classifiers import AegisClassifier, ClassifierResult, RuleBasedClassifier
+from aegis.classifiers.base import BaseClassifier
+from aegis.core.config import ClassifierBackend, get_config
+from aegis.core.constants import AgentName
+from aegis.core.models import AgentFinding
 
-
-# PHASE2: Replace RuleBasedClassifier with AegisClassifier (ML model)
-# Interface: classifier.predict(text: str) -> ClassifierResult
-# ClassifierResult has .score (float), .label (str), .confidence (float)
-class RuleBasedClassifier:
-    def __init__(self) -> None:
-        self._patterns = [re.compile(p, re.IGNORECASE | re.DOTALL) for p in PROMPT_INJECTION_PATTERNS]
-
-    def predict(self, text: str) -> "ClassifierResult":
-        matches = []
-        for pattern in self._patterns:
-            match = pattern.search(text)
-            if match:
-                matches.append(match.group(0)[:100])
-
-        if not matches:
-            return ClassifierResult(score=0.0, label="safe", confidence=0.9, matched_patterns=[])
-
-        score = min(0.9, len(matches) * 0.2 + 0.3)
-        return ClassifierResult(
-            score=score,
-            label="injection",
-            confidence=0.7 + min(0.25, len(matches) * 0.05),
-            matched_patterns=matches,
-        )
-
-
-class ClassifierResult:
-    def __init__(self, score: float, label: str, confidence: float, matched_patterns: list[str]) -> None:
-        self.score = score
-        self.label = label
-        self.confidence = confidence
-        self.matched_patterns = matched_patterns
+logger = logging.getLogger(__name__)
 
 
 class SemanticAgent(BaseAegisAgent):
@@ -56,11 +27,44 @@ class SemanticAgent(BaseAegisAgent):
 
     def __init__(self, enable_memory: bool = True) -> None:
         super().__init__(enable_memory=enable_memory)
-        # PHASE2: Replace with AegisClassifier(model_path=config.classifier_model_path)
+        self._classifier: BaseClassifier | None = None
+        self._init_classifier()
+
+    def _init_classifier(self) -> None:
+        """Initialize the classifier based on configuration."""
+        config = get_config()
+
+        # Try AegisClassifier if configured
+        if config.classifier.backend == ClassifierBackend.AEGIS:
+            try:
+                classifier = AegisClassifier(
+                    model_path=config.classifier.model_path,
+                    device=config.classifier.device,
+                )
+                if classifier.is_available():
+                    self._classifier = classifier
+                    logger.info("Using AegisClassifier (ML backend)")
+                    return
+            except Exception as exc:
+                logger.warning("Failed to load AegisClassifier: %s", exc)
+
+        # Fallback to rule-based classifier
         self._classifier = RuleBasedClassifier()
+        logger.info("Using RuleBasedClassifier")
 
     def analyze(self, content: str, context: dict[str, Any]) -> AgentFinding:
         text = self._extract_text(content, context)
+
+        if self._classifier is None:
+            self._init_classifier()
+
+        if self._classifier is None:
+            # Ultimate fallback - should never happen
+            return self._make_finding(
+                0.0,
+                ["classifier_unavailable"],
+                "Semantic analysis unavailable.",
+            )
 
         result = self._classifier.predict(text)
         signals: list[str] = []
@@ -90,22 +94,26 @@ class SemanticAgent(BaseAegisAgent):
             combined_score,
             signals,
             explanation,
-            {"classifier_label": result.label, "confidence": result.confidence},
+            {"classifier_label": result.label, "confidence": result.confidence, "backend": self._classifier.__class__.__name__},
         )
 
     def _extract_text(self, content: str, context: dict[str, Any]) -> str:
         processed = context.get("processed", {})
+        if not isinstance(processed, dict):
+            return content
         if "all_text" in processed:
-            return processed["all_text"]
+            return str(processed["all_text"])
         if "normalized_text" in processed:
-            return processed["normalized_text"]
+            return str(processed["normalized_text"])
         if "ocr_text" in processed:
-            return processed.get("ocr_text", "") + " " + content
+            return str(processed.get("ocr_text", "")) + " " + content
         if "normalized" in processed:
-            return processed["normalized"]
+            return str(processed["normalized"])
         return content
 
     def _check_additional_patterns(self, text: str) -> tuple[list[str], float]:
+        import re
+
         signals = []
         score = 0.0
 

@@ -1,7 +1,9 @@
 """Tests for SemanticAgent."""
 
 import pytest
-from aegis.agents.semantic import SemanticAgent, RuleBasedClassifier
+
+from aegis.agents.semantic import SemanticAgent
+from aegis.classifiers import RuleBasedClassifier
 from aegis.core.constants import ContentType
 
 
@@ -39,6 +41,16 @@ def test_classifier_detects_jailbreak(classifier: RuleBasedClassifier) -> None:
     assert result.label == "injection"
 
 
+def test_classifier_is_available(classifier: RuleBasedClassifier) -> None:
+    assert classifier.is_available() is True
+
+
+def test_classifier_health_check(classifier: RuleBasedClassifier) -> None:
+    health = classifier.health_check()
+    assert health["available"] is True
+    assert health["type"] == "RuleBasedClassifier"
+
+
 def test_semantic_agent_safe_text(agent: SemanticAgent) -> None:
     finding = agent.analyze(
         "I really enjoy reading science fiction books.",
@@ -74,3 +86,21 @@ def test_finding_score_in_range(agent: SemanticAgent) -> None:
         {"content_type": ContentType.TEXT.value, "processed": {}},
     )
     assert 0.0 <= finding.score <= 1.0
+
+
+def test_semantic_agent_with_aegis_classifier_backend() -> None:
+    """Test that agent can be initialized with AegisClassifier backend."""
+    import os
+
+    # Force Aegis backend (will fall back to rule-based since no model exists)
+    os.environ["CLASSIFIER_BACKEND"] = "aegis"
+
+    agent = SemanticAgent(enable_memory=False)
+    finding = agent.analyze(
+        "Test content",
+        {"content_type": ContentType.TEXT.value, "processed": {}},
+    )
+    assert finding.agent == "semantic"
+
+    # Clean up
+    del os.environ["CLASSIFIER_BACKEND"]

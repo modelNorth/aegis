@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
 from aegis.api.deps import AuthDep
 from aegis.core.exceptions import StorageError
-from aegis.core.models import SessionCreateRequest, SessionResponse
+from aegis.core.models import SessionCreateRequest, SessionResponse, SessionSummary
 from aegis.storage.supabase import get_store
 
 logger = logging.getLogger(__name__)
@@ -46,7 +48,6 @@ async def get_session(
                 detail=f"Session {session_id} not found",
             )
         row = response.data[0]
-        from datetime import datetime
         return SessionResponse(
             session_id=row["id"],
             user_id=row.get("user_id"),
@@ -59,6 +60,111 @@ async def get_session(
     except StorageError as exc:
         logger.error("Storage error: %s", exc)
         raise HTTPException(status_code=500, detail="Storage error")
+
+
+@router.get("/{session_id}/summary", response_model=SessionSummary)
+async def get_session_summary(
+    session_id: str,
+    api_key_data: AuthDep,
+) -> SessionSummary:
+    """Get summary statistics for a session."""
+    try:
+        store = get_store()
+
+        # Get session info
+        session_resp = store.client.table("sessions").select("*").eq("id", session_id).execute()
+        if not session_resp.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {session_id} not found",
+            )
+
+        session_row = session_resp.data[0]
+
+        # Get jobs for this session
+        jobs_resp = store.client.table("jobs").select("*").eq("session_id", session_id).execute()
+
+        total_scans = len(jobs_resp.data) if jobs_resp.data else 0
+        injections_detected = 0
+        risk_distribution: dict[str, int] = {}
+        risk_scores: list[float] = []
+        agent_trigger_counts: dict[str, int] = {}
+        scan_history: list[dict[str, Any]] = []
+        last_scan_at: datetime | None = None
+
+        if jobs_resp.data:
+            for job in jobs_resp.data:
+                result = job.get("result", {})
+                if not result:
+                    continue
+
+                # Risk level distribution
+                risk_level = result.get("risk_level", "unknown")
+                risk_distribution[risk_level] = risk_distribution.get(risk_level, 0) + 1
+
+                # Injections count
+                if result.get("is_injection", False):
+                    injections_detected += 1
+
+                # Risk scores for average
+                risk_score = result.get("risk_score", 0.0)
+                risk_scores.append(risk_score)
+
+                # Agent triggers
+                findings = result.get("findings", [])
+                for finding in findings:
+                    agent = finding.get("agent", "unknown")
+                    if finding.get("score", 0) > 0.3:
+                        agent_trigger_counts[agent] = agent_trigger_counts.get(agent, 0) + 1
+
+                # Scan history (last 10)
+                created_at = job.get("created_at")
+                if created_at:
+                    scan_history.append({
+                        "job_id": job.get("id"),
+                        "risk_level": risk_level,
+                        "risk_score": risk_score,
+                        "is_injection": result.get("is_injection", False),
+                        "created_at": created_at,
+                    })
+                    job_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    if last_scan_at is None or job_time > last_scan_at:
+                        last_scan_at = job_time
+
+        # Sort history by date and limit
+        scan_history.sort(key=lambda x: x["created_at"], reverse=True)
+        scan_history = scan_history[:10]
+
+        # Calculate average risk score
+        avg_risk_score = sum(risk_scores) / len(risk_scores) if risk_scores else 0.0
+
+        # Get top triggered agents
+        top_agents = sorted(
+            agent_trigger_counts.items(),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:5]
+
+        return SessionSummary(
+            session_id=session_id,
+            total_scans=total_scans,
+            injections_detected=injections_detected,
+            risk_distribution=risk_distribution,
+            avg_risk_score=round(avg_risk_score, 4),
+            top_agents_triggered=top_agents,
+            scan_history=scan_history,
+            created_at=datetime.fromisoformat(session_row["created_at"]),
+            last_scan_at=last_scan_at,
+        )
+
+    except HTTPException:
+        raise
+    except StorageError as exc:
+        logger.error("Storage error: %s", exc)
+        raise HTTPException(status_code=500, detail="Storage error")
+    except Exception as exc:
+        logger.error("Failed to get session summary: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to get session summary")
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

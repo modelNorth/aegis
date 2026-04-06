@@ -1,10 +1,18 @@
 """Application configuration using Pydantic Settings."""
 
+from enum import StrEnum
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class ClassifierBackend(StrEnum):
+    """Classifier backend options."""
+
+    AEGIS = "aegis"
+    RULE = "rule"
 
 
 class Settings(BaseSettings):
@@ -63,17 +71,54 @@ class BullMQSettings(BaseSettings):
     queue_name: str = "aegis-scan"
 
 
-class OpenAISettings(BaseSettings):
+class ClassifierSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="OPENAI_",
+        env_prefix="CLASSIFIER_",
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
 
-    api_key: str = ""
-    model: str = "gpt-4o-mini"
+    backend: ClassifierBackend = Field(default=ClassifierBackend.RULE, alias="backend")
+    model_path: str = Field(default="/app/models/aegis_classifier.pt", alias="model_path")
+    device: str = Field(default="auto", alias="device")
+
+    @field_validator("backend", mode="before")
+    @classmethod
+    def validate_backend(cls, v: str | ClassifierBackend) -> ClassifierBackend:
+        if isinstance(v, str):
+            return ClassifierBackend(v.lower())
+        return v
+
+
+class OllamaSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="OLLAMA_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    base_url: str = "http://localhost:11434"
+    model: str = "llama2"
+    timeout: int = 30
+
+
+class LangfuseSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="LANGFUSE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    host: str = ""
+    public_key: str = ""
+    secret_key: str = ""
+    enabled: bool = False
 
 
 class Mem0Settings(BaseSettings):
@@ -88,6 +133,8 @@ class Mem0Settings(BaseSettings):
     api_key: str = ""
     qdrant_host: str = ""
     qdrant_port: int = 6333
+    use_supabase: bool = True
+    embedding_model: str = "all-MiniLM-L6-v2"
 
 
 class RateLimitSettings(BaseSettings):
@@ -139,7 +186,9 @@ class AppConfig:
         self.supabase = SupabaseSettings()
         self.redis = RedisSettings()
         self.bullmq = BullMQSettings()
-        self.openai = OpenAISettings()
+        self.classifier = ClassifierSettings()
+        self.ollama = OllamaSettings()
+        self.langfuse = LangfuseSettings()
         self.mem0 = Mem0Settings()
         self.rate_limit = RateLimitSettings()
         self.processing = ProcessingSettings()

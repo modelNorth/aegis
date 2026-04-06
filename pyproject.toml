@@ -4,19 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aegis-guard"
-version = "0.1.0"
-description = "Content security microservice with CrewAI agents detecting prompt injection attacks"
+version = "0.2.0"
+description = "Self-hosted content security microservice with local ML for prompt injection detection"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [
-    { name = "Aegis Team", email = "aegis@example.com" }
+    { name = "ModelNorth", email = "team@modelnorth.com" }
 ]
-keywords = ["security", "prompt-injection", "crewai", "content-moderation", "ai-safety"]
+keywords = ["security", "prompt-injection", "langgraph", "content-moderation", "ai-safety", "self-hosted"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -29,8 +29,6 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
-    "crewai>=0.63.0",
-    "crewai-tools>=0.12.0",
     "mem0ai>=0.1.29",
     "supabase>=2.5.0",
     "redis>=5.0.4",
@@ -41,12 +39,13 @@ dependencies = [
     "python-multipart>=0.0.9",
     "beautifulsoup4>=4.12.0",
     "lxml>=5.2.0",
-    "pypdf>=4.2.0",
+    "pdfplumber>=0.10.0",
     "Pillow>=10.3.0",
     "pytesseract>=0.3.10",
     "sentence-transformers>=3.0.0",
     "numpy>=1.26.0",
-    "typer[all]>=0.12.0",
+    "torch>=2.0.0",
+    "typer>=0.12.0",
     "rich>=13.7.0",
     "structlog>=24.2.0",
     "tenacity>=8.3.0",
@@ -54,6 +53,11 @@ dependencies = [
     "anyio>=4.4.0",
     "aiofiles>=23.2.1",
     "toml>=0.10.2",
+    "langgraph>=0.0.50",
+    "langchain>=0.1.0",
+    "langfuse>=2.0.0",
+    "nemoguardrails>=0.8.0",
+    "opencv-python>=4.8.0",
 ]
 
 [project.optional-dependencies]
@@ -82,7 +86,7 @@ Documentation = "https://github.com/modelNorth/aegis/blob/main/docs"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"aegis" = ["py.typed"]
+"aegis" = ["py.typed", "guardrails/config/*.yml"]
 
 [tool.ruff]
 line-length = 100

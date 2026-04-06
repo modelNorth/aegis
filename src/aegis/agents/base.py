@@ -1,4 +1,4 @@
-"""Base agent class with Mem0 memory integration."""
+"""Base agent class with Mem0 memory integration (self-hosted, no external APIs)."""
 
 from __future__ import annotations
 
@@ -36,18 +36,43 @@ class BaseAegisAgent:
             self._memory_client = None
 
     def _build_mem0_config(self) -> dict[str, Any]:
+        """Build Mem0 config using local embeddings only (no external LLM APIs)."""
         config = get_config()
+
+        # Use local sentence-transformers with offline mode
+        # This requires the model to be pre-downloaded in the Docker image
         mem0_cfg: dict[str, Any] = {
-            "llm": {
-                "provider": "openai",
+            "embedder": {
+                "provider": "huggingface",
                 "config": {
-                    "model": config.openai.model,
-                    "api_key": config.openai.api_key,
+                    "model": config.mem0.embedding_model or config.processing.embedding_model,
+                    # Set local_files_only to avoid network calls
+                    "model_kwargs": {"local_files_only": True},
+                },
+            },
+            "llm": {
+                "provider": "ollama",
+                "config": {
+                    "model": config.ollama.model,
+                    "ollama_base_url": config.ollama.base_url,
+                    "temperature": 0.1,
                 },
             },
         }
 
-        if config.mem0.qdrant_host:
+        # Configure vector store - prefer Supabase for self-hosted
+        if config.mem0.use_supabase and config.supabase.url:
+            # Mem0 doesn't directly support Supabase, so we use a simple fallback
+            # The memories will be stored via our own implementation
+            mem0_cfg["vector_store"] = {
+                "provider": "qdrant",
+                "config": {
+                    "host": config.mem0.qdrant_host or "localhost",
+                    "port": config.mem0.qdrant_port or 6333,
+                    "collection_name": f"aegis_{self.name.value}",
+                },
+            }
+        elif config.mem0.qdrant_host:
             mem0_cfg["vector_store"] = {
                 "provider": "qdrant",
                 "config": {
@@ -57,6 +82,7 @@ class BaseAegisAgent:
                 },
             }
         elif config.mem0.api_key:
+            # Fallback to Mem0 cloud if configured
             mem0_cfg["api_key"] = config.mem0.api_key
 
         return mem0_cfg

@@ -46,6 +46,7 @@ class ScanResult(BaseModel):
     content_type: ContentType
     processing_time_ms: int = Field(default=0, description="Processing time in milliseconds")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    sanitized_content: str | None = Field(default=None, description="Sanitized content after guardrails")
 
 
 class JobResponse(BaseModel):
@@ -68,6 +69,20 @@ class SessionResponse(BaseModel):
     created_at: datetime
     scan_count: int = 0
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SessionSummary(BaseModel):
+    """Summary statistics for a session's scans."""
+
+    session_id: str
+    total_scans: int = 0
+    injections_detected: int = 0
+    risk_distribution: dict[str, int] = Field(default_factory=dict)
+    avg_risk_score: float = 0.0
+    top_agents_triggered: list[tuple[str, int]] = Field(default_factory=list)
+    scan_history: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime | None = None
+    last_scan_at: datetime | None = None
 
 
 class FeedbackRequest(BaseModel):
