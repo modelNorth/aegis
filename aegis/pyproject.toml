@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aegis-guard"
+version = "0.1.0"
+description = "Content security microservice with CrewAI agents detecting prompt injection attacks"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Aegis Team", email = "aegis@example.com" }
+]
+keywords = ["security", "prompt-injection", "crewai", "content-moderation", "ai-safety"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+]
+
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "crewai>=0.63.0",
+    "crewai-tools>=0.12.0",
+    "mem0ai>=0.1.29",
+    "supabase>=2.5.0",
+    "redis>=5.0.4",
+    "bullmq>=2.4.0",
+    "httpx>=0.27.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-multipart>=0.0.9",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
+    "pypdf>=4.2.0",
+    "Pillow>=10.3.0",
+    "pytesseract>=0.3.10",
+    "sentence-transformers>=3.0.0",
+    "numpy>=1.26.0",
+    "typer[all]>=0.12.0",
+    "rich>=13.7.0",
+    "structlog>=24.2.0",
+    "tenacity>=8.3.0",
+    "python-dotenv>=1.0.1",
+    "anyio>=4.4.0",
+    "aiofiles>=23.2.1",
+    "toml>=0.10.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.7",
+    "pytest-cov>=5.0.0",
+    "httpx>=0.27.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "types-beautifulsoup4",
+    "types-redis",
+    "types-Pillow",
+    "types-toml",
+]
+
+[project.scripts]
+aegis = "aegis.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/modelNorth/aegis"
+Repository = "https://github.com/modelNorth/aegis"
+Documentation = "https://github.com/modelNorth/aegis/blob/main/docs"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"aegis" = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --cov=aegis --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["src/aegis"]
+omit = ["*/tests/*"]

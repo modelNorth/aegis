@@ -1,0 +1,91 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+htmlcov/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Distribution / packaging
+*.tar.gz
+*.whl
+
+# Logs
+*.log
+logs/
+
+# Local data
+data/
+uploads/
+downloads/
+
+# Docker
+.docker/
+
+# Supabase local
+supabase/.branches
+supabase/.temp
+
+# Sentence transformers cache
+~/.cache/huggingface/
+.cache/
+
+# Aegis CLI config
+~/.aegis/
